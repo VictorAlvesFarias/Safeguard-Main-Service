@@ -16,6 +16,7 @@ namespace Application.Services.AppFileService
     {
         private readonly IBaseRepository<AppFile> _appFileRepository;
         private readonly IBaseRepository<StoredFile> _storedFileRepository;
+
         public AppFileService(
              IBaseRepository<AppFile> appFileRepository,
              IBaseRepository<StoredFile> storedFileRepository
@@ -23,6 +24,7 @@ namespace Application.Services.AppFileService
             _appFileRepository = appFileRepository;
             _storedFileRepository = storedFileRepository;
         }
+        
         public BaseResponse<AppFile> InsertFile(IFormFile req)
         {
             var file = new AppFile();
@@ -59,6 +61,51 @@ namespace Application.Services.AppFileService
             }
 
             return response;
+        }
+        public BaseResponse<AppFile> InsertFileUrl(string imageUrl)
+        {
+            var file = new AppFile();
+            var storedFile = new StoredFile();
+
+            using (var httpClient = new HttpClient())
+            {
+                var response = httpClient.GetAsync(imageUrl).Result;
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var failed = new BaseResponse<AppFile>(false);
+                    failed.AddError("Não foi possível baixar a imagem da URL");
+                    return failed;
+                }
+
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/png";
+                var fileName = Path.GetFileName(new Uri(imageUrl).LocalPath);
+                var bytes = response.Content.ReadAsByteArrayAsync().Result;
+
+                storedFile.Create(
+                    fileName,
+                    contentType,
+                    Convert.ToBase64String(bytes)
+                );
+            }
+
+            var storedFileAddedFile = _storedFileRepository.AddAsync(storedFile).Result;
+
+            file.Create(storedFileAddedFile);
+
+            var appFileAddResult = _appFileRepository.AddAsync(file).Result;
+            var result = new BaseResponse<AppFile>(appFileAddResult is not null && storedFileAddedFile is not null);
+
+            if (!result.Success)
+            {
+                result.AddError("Não foi possivel completar a operação");
+            }
+            else
+            {
+                result.Data = file;
+            }
+
+            return result;
         }
         public DefaultResponse DeleteFile(int id)
         {
