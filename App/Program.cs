@@ -38,21 +38,35 @@ builder.Services.AddDbContext<ApplicationContext>(opt =>
     //var connectionString = $"{configuration.GetConnectionString("DefaultConnection")}Password={Environment.GetEnvironmentVariable("DEVELOPMENT_DATABASE_KEY")};";
     var connectionString = $"{builder.Configuration.GetConnectionString("DefaultConnection")};";
 
-    opt.UseSqlite(connectionString);
+    opt.UseNpgsql(connectionString);
 });
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    var portConfig = builder.Configuration.GetSection("Ports").Get<Dictionary<string, int>>();
+    var httpPort = builder.Configuration.GetValue<int>("Ports:Http");
+    var httpsPort = builder.Configuration.GetValue<int>("Ports:Https");
 
-    options.ListenLocalhost(portConfig["Https"], configure =>
+    // In a container the API must listen on every interface over plain HTTP: there is no
+    // development certificate and localhost is unreachable from outside (Ports__ListenAnyIp=true).
+    if (builder.Configuration.GetValue<bool>("Ports:ListenAnyIp"))
+    {
+        options.ListenAnyIP(httpPort);
+        return;
+    }
+
+    options.ListenLocalhost(httpsPort, configure =>
     {
         configure.UseHttps();
     });
-    options.ListenLocalhost(portConfig["Http"]);
+    options.ListenLocalhost(httpPort);
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    scope.ServiceProvider.GetRequiredService<ApplicationContext>().Database.Migrate();
+}
 
 if (app.Environment.IsDevelopment())
 {

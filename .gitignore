@@ -363,3 +363,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Old SQLite database (the API uses PostgreSQL now): it holds real data, never version it
+App/Db/

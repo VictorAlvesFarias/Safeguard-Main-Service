@@ -20,6 +20,16 @@ namespace Infrastructure.Context
         protected DbSet<EmailAddress> EmailAddress { get; set; }
         protected DbSet<EmailFile> EmailFile { get; set; }
         protected DbSet<RecoveryEmail> RecoveryEmail { get; set; }
+        protected DbSet<CapturedCredential> CapturedCredential { get; set; }
+        protected DbSet<Authenticator> Authenticator { get; set; }
+
+        // DateTime columns become "timestamp without time zone" and accept DateTime.Now, as they did
+        // in SQLite. Set here so the app and the dotnet ef tools build the same model.
+        static ApplicationContext()
+        {
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+        }
+
         public ApplicationContext(DbContextOptions<ApplicationContext> options, IHttpContextAccessor contextAccessor)
             : base(options)
         {
@@ -103,6 +113,44 @@ namespace Infrastructure.Context
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<CapturedCredential>(entity =>
+            {
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(e => e.Email)
+                    .WithMany()
+                    .HasForeignKey(e => e.EmailId)
+                    .OnDelete(DeleteBehavior.SetNull)
+                    .IsRequired(false);
+
+                entity.Property(e => e.Domain).IsRequired();
+                entity.Property(e => e.Username).IsRequired();
+
+                entity.HasIndex(e => new { e.UserId, e.Domain, e.Username }).IsUnique();
+            });
+
+            modelBuilder.Entity<Authenticator>(entity =>
+            {
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(e => e.Email)
+                    .WithMany()
+                    .HasForeignKey(e => e.EmailId)
+                    .OnDelete(DeleteBehavior.SetNull)
+                    .IsRequired(false);
+
+                entity.Property(e => e.Issuer).IsRequired();
+                entity.Property(e => e.AccountName).IsRequired();
+                entity.Property(e => e.Secret).IsRequired();
+                entity.Property(e => e.Algorithm).IsRequired();
+            });
         }
 
     }
