@@ -144,7 +144,16 @@ namespace Application.Services.Identity
         }
         public async Task<BaseResponse<LoginUserResponse>> LoginAsync(LoginUserRequest loginData)
         {
-            var user = await GetUserByEmailOrUsername(loginData.AccessKey);
+            var user = string.IsNullOrWhiteSpace(loginData.AccessKey) ? null : await GetUserByEmailOrUsername(loginData.AccessKey);
+
+            if (user == null || string.IsNullOrEmpty(loginData.Password))
+            {
+                var invalidLogin = new BaseResponse<LoginUserResponse>(false);
+
+                invalidLogin.AddError("Senha ou Usuario incorretos.");
+
+                return invalidLogin;
+            }
 
             var login = await _singInManager.PasswordSignInAsync(user, loginData.Password,false, false);
 
