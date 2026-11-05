@@ -7,6 +7,8 @@ namespace App.Application.Configuration
         public string Issuer { get; set; }
         public string Audience { get; set; }
         public int AccessTokenExpiration { get; set; }
+        /// <summary>Seconds a refresh token stays valid without being used (renewed on every use).</summary>
+        public int RefreshTokenExpiration { get; set; }
         public string SecurityKey { get; set; }
         public SigningCredentials SigningCredentials { get; set; }
 

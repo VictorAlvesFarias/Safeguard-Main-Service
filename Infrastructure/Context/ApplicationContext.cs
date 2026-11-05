@@ -22,6 +22,7 @@ namespace Infrastructure.Context
         protected DbSet<RecoveryEmail> RecoveryEmail { get; set; }
         protected DbSet<CapturedCredential> CapturedCredential { get; set; }
         protected DbSet<Authenticator> Authenticator { get; set; }
+        protected DbSet<RefreshToken> RefreshToken { get; set; }
 
         // DateTime columns become "timestamp without time zone" and accept DateTime.Now, as they did
         // in SQLite. Set here so the app and the dotnet ef tools build the same model.
@@ -42,6 +43,15 @@ namespace Infrastructure.Context
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<RefreshToken>(entity =>
+            {
+                entity.HasIndex(e => e.TokenHash).IsUnique();
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             modelBuilder.Entity<Platform>()
                 .HasOne(e => e.Image)

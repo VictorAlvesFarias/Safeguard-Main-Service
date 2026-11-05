@@ -34,6 +34,10 @@ namespace App.Extensions
                     SecurityAlgorithms.HmacSha512
                 ); ;
                 options.AccessTokenExpiration = JwtAppSettings.AccessTokenExpiration;
+                // 30 days when not configured.
+                options.RefreshTokenExpiration = JwtAppSettings.RefreshTokenExpiration > 0
+                    ? JwtAppSettings.RefreshTokenExpiration
+                    : 30 * 24 * 3600;
             });
             services.Configure<IdentityOptions>(options => {
                 options.Password.RequireDigit = false;

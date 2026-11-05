@@ -14,5 +14,8 @@ namespace Application.Dtos.User.Login
         public string Name { get; set; }
         public string Username { get; set; }
         public string Token { get; set; }
+        /// <summary>Traded at /refresh-token for a new Token (and a new RefreshToken).</summary>
+        public string RefreshToken { get; set; }
+        public DateTime RefreshTokenExpirationDateTime { get; set; }
     }
 }

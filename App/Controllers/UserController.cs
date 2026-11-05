@@ -56,6 +56,25 @@ namespace ASP.NET_Core_Template.Controllers
             return StatusCode(StatusCodes.Status500InternalServerError);
         }
 
+        /// <summary>Trades a refresh token for a new access token and a new refresh token.</summary>
+        [AllowAnonymous]
+        [HttpPost("/refresh-token")]
+        public async Task<ActionResult<BaseResponse<LoginUserResponse>>> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            var result = await _identityService.RefreshTokenAsync(request);
+
+            // 401 tells the clients the session is over and a new login is needed.
+            return result.Success ? Ok(result) : Unauthorized(result);
+        }
+
+        /// <summary>Revokes the refresh token (logout). Always succeeds.</summary>
+        [AllowAnonymous]
+        [HttpPost("/sign-out")]
+        public async Task<ActionResult<DefaultResponse>> SignOutUser([FromBody] RefreshTokenRequest request)
+        {
+            return Ok(await _identityService.RevokeRefreshTokenAsync(request));
+        }
+
         [Authorize]
         [HttpDelete("/delete-user")]
         public async Task<ActionResult<DefaultResponse>> DeleteUser([FromBody] LoginUserRequest loginData)

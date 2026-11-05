@@ -7,10 +7,14 @@ using Application.Dtos.User.Put;
 using Domain.Entitites;
 using Infrastructure.Context;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Application.Services.Identity
@@ -142,6 +146,148 @@ namespace Application.Services.Identity
                 return response;
             }
         }
+        // ------------------------------------------------------------------ refresh tokens
+
+        /// <summary>
+        /// A refresh token rotated this recently may still be presented by another client of the
+        /// same session (the app tab and the browser extension share it): accepted, not treated as theft.
+        /// </summary>
+        private const int RefreshRotationGraceSeconds = 60;
+
+        private static string HashRefreshToken(string token)
+        {
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+        }
+
+        /// <summary>New access token + new refresh token (stored hashed) for the user.</summary>
+        private async Task<(LoginUserResponse Session, string RefreshTokenHash)> CreateSessionAsync(ApplicationUser user)
+        {
+            var now = DateTime.Now;
+            var refreshToken = Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(64));
+            var refreshTokenHash = HashRefreshToken(refreshToken);
+            var refreshExpiresAt = now.AddSeconds(_jwtOptions.RefreshTokenExpiration);
+            var tokens = _context.Set<RefreshToken>();
+
+            // Housekeeping: drop this user's expired tokens and ones revoked over a day ago.
+            var stale = await tokens
+                .Where(t => t.UserId == user.Id && (t.ExpiresAt < now || (t.RevokedAt != null && t.RevokedAt < now.AddDays(-1))))
+                .ToListAsync();
+            tokens.RemoveRange(stale);
+
+            tokens.Add(new RefreshToken
+            {
+                UserId = user.Id,
+                TokenHash = refreshTokenHash,
+                ExpiresAt = refreshExpiresAt,
+                CreateDate = now,
+                UpdateDate = now
+            });
+            await _context.SaveChangesAsync();
+
+            var session = new LoginUserResponse
+            {
+                Email = user.Email,
+                Name = user.Name,
+                Username = user.UserName,
+                ExpirationTokenTime = _jwtOptions.AccessTokenExpiration,
+                ExpectedExpirationTokenDateTime = DateTime.UtcNow.AddSeconds(_jwtOptions.AccessTokenExpiration),
+                Token = await CreateToken(user),
+                RefreshToken = refreshToken,
+                RefreshTokenExpirationDateTime = refreshExpiresAt.ToUniversalTime()
+            };
+
+            return (session, refreshTokenHash);
+        }
+
+        public async Task<BaseResponse<LoginUserResponse>> RefreshTokenAsync(RefreshTokenRequest request)
+        {
+            var response = new BaseResponse<LoginUserResponse>(false);
+            var now = DateTime.Now;
+
+            if (string.IsNullOrWhiteSpace(request?.RefreshToken))
+            {
+                response.AddError("Sessão expirada. Entre de novo.");
+                return response;
+            }
+
+            var tokens = _context.Set<RefreshToken>();
+            var hash = HashRefreshToken(request.RefreshToken);
+            var stored = await tokens.FirstOrDefaultAsync(t => t.TokenHash == hash);
+
+            if (stored == null || stored.ExpiresAt <= now)
+            {
+                response.AddError("Sessão expirada. Entre de novo.");
+                return response;
+            }
+
+            if (stored.RevokedAt != null)
+            {
+                var justRotated = stored.ReplacedByHash != null && stored.RevokedAt > now.AddSeconds(-RefreshRotationGraceSeconds);
+
+                if (!justRotated)
+                {
+                    // An old, already rotated token came back: someone else may hold it. End every session.
+                    if (stored.ReplacedByHash != null)
+                    {
+                        var active = await tokens.Where(t => t.UserId == stored.UserId && t.RevokedAt == null).ToListAsync();
+                        active.ForEach(t => t.RevokedAt = now);
+                        await _context.SaveChangesAsync();
+                    }
+
+                    response.AddError("Sessão expirada. Entre de novo.");
+                    return response;
+                }
+            }
+
+            var user = await _userManager.FindByIdAsync(stored.UserId);
+
+            if (user == null)
+            {
+                response.AddError("Sessão expirada. Entre de novo.");
+                return response;
+            }
+
+            var (session, newHash) = await CreateSessionAsync(user);
+
+            if (stored.RevokedAt == null)
+            {
+                stored.RevokedAt = now;
+                stored.ReplacedByHash = newHash;
+                stored.UpdateDate = now;
+                await _context.SaveChangesAsync();
+            }
+
+            response.Success = true;
+            response.Data = session;
+
+            return response;
+        }
+
+        public async Task<DefaultResponse> RevokeRefreshTokenAsync(RefreshTokenRequest request)
+        {
+            var response = new DefaultResponse { Success = true };
+
+            if (string.IsNullOrWhiteSpace(request?.RefreshToken))
+            {
+                return response;
+            }
+
+            var hash = HashRefreshToken(request.RefreshToken);
+            var stored = await _context.Set<RefreshToken>()
+                .FirstOrDefaultAsync(t => t.TokenHash == hash && t.RevokedAt == null);
+
+            if (stored != null)
+            {
+                stored.RevokedAt = DateTime.Now;
+                stored.UpdateDate = DateTime.Now;
+                await _context.SaveChangesAsync();
+            }
+
+            return response;
+        }
+
+        // ------------------------------------------------------------------ login
+
         public async Task<BaseResponse<LoginUserResponse>> LoginAsync(LoginUserRequest loginData)
         {
             var user = string.IsNullOrWhiteSpace(loginData.AccessKey) ? null : await GetUserByEmailOrUsername(loginData.AccessKey);
@@ -161,16 +307,7 @@ namespace Application.Services.Identity
 
             if (login.Succeeded)
             {
-                response.Data = new()
-                {
-                    Email = user.Email,
-                    ExpectedExpirationTokenDateTime = DateTime.UtcNow.AddSeconds(3600) ,  
-                    Name = user.Name,   
-                    Username = user.UserName,
-                    ExpirationTokenTime = _jwtOptions.AccessTokenExpiration,
-                    Token = await CreateToken(user)
-                    
-                };
+                response.Data = (await CreateSessionAsync(user)).Session;
 
                 return response;
             }
