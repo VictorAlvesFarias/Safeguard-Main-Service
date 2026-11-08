@@ -62,31 +62,51 @@ namespace Application.Services.AppFileService
 
             return response;
         }
+        private const int MaxIconBytes = 2 * 1024 * 1024;
+        private static readonly HttpClient IconClient = new() { Timeout = TimeSpan.FromSeconds(8) };
+
         public BaseResponse<AppFile> InsertFileUrl(string imageUrl)
         {
             var file = new AppFile();
             var storedFile = new StoredFile();
 
-            using (var httpClient = new HttpClient())
-            {
-                var response = httpClient.GetAsync(imageUrl).Result;
+            var failed = new BaseResponse<AppFile>(false);
+            failed.AddError("Não foi possível baixar a imagem da URL");
 
-                if (!response.IsSuccessStatusCode)
+            // The URL comes from a captured page: only web images, small, and never waiting long
+            // (without internet, e.g. behind a VPN, the request would hang for minutes).
+            if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                return failed;
+            }
+
+            try
+            {
+                using var response = IconClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).Result;
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/png";
+                var length = response.Content.Headers.ContentLength;
+
+                if (!response.IsSuccessStatusCode || !contentType.StartsWith("image/") || length > MaxIconBytes)
                 {
-                    var failed = new BaseResponse<AppFile>(false);
-                    failed.AddError("Não foi possível baixar a imagem da URL");
                     return failed;
                 }
 
-                var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/png";
-                var fileName = Path.GetFileName(new Uri(imageUrl).LocalPath);
                 var bytes = response.Content.ReadAsByteArrayAsync().Result;
+                if (bytes.Length > MaxIconBytes)
+                {
+                    return failed;
+                }
 
                 storedFile.Create(
-                    fileName,
+                    Path.GetFileName(uri.LocalPath),
                     contentType,
                     Convert.ToBase64String(bytes)
                 );
+            }
+            catch (Exception)
+            {
+                // Timeout, DNS or connection failure.
+                return failed;
             }
 
             var storedFileAddedFile = _storedFileRepository.AddAsync(storedFile).Result;
