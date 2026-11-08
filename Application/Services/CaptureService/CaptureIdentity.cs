@@ -40,6 +40,56 @@ namespace Application.Services.CaptureService
             return labels[labels.Length - (secondLevel ? 3 : 2)];
         }
 
+        /// <summary>
+        /// Government/education suffixes that are a brand of their own: "govbr" and "gov" for *.gov.br
+        /// (the gov.br login lives at sso.acesso.gov.br). Empty for ordinary domains.
+        /// </summary>
+        public static string[] SharedSuffixKeys(string? domain)
+        {
+            var labels = (domain ?? "").Trim().ToLowerInvariant().Split('.', StringSplitOptions.RemoveEmptyEntries);
+            return labels.Length > 2 && (labels[^2] == "gov" || labels[^2] == "edu")
+                ? new[] { Normalize(labels[^2] + labels[^1]), Normalize(labels[^2]) }
+                : Array.Empty<string>();
+        }
+
+        /// <summary>A typed or captured site as a bare host: no scheme, path, port or "www.".</summary>
+        public static string NormalizeSiteDomain(string? value)
+        {
+            var text = (value ?? "").Trim().ToLowerInvariant();
+            if (Uri.TryCreate(text.Contains("://") ? text : $"http://{text}", UriKind.Absolute, out var uri))
+            {
+                text = uri.Host;
+            }
+            text = text.Trim('.');
+            return text.StartsWith("www.") ? text[4..] : text;
+        }
+
+        /// <summary>
+        /// The domain a site is registered under, which covers all of its hosts: acesso.gov.br for
+        /// sso.acesso.gov.br, google.com for accounts.google.com, itau.com.br for www.itau.com.br.
+        /// </summary>
+        public static string RegistrableDomain(string? host)
+        {
+            var domain = NormalizeSiteDomain(host);
+            var labels = domain.Split('.', StringSplitOptions.RemoveEmptyEntries);
+            if (labels.Length < 3 || labels.All(l => l.All(char.IsDigit)))
+            {
+                return domain;
+            }
+            var keep = GenericSecondLevel.Contains(labels[^2]) ? 3 : 2;
+            return string.Join(".", labels[^keep..]);
+        }
+
+        /// <summary>The linked domain that covers the host (itself or a parent); the most specific wins.</summary>
+        public static PlatformDomain? MatchDomain(string? host, IEnumerable<PlatformDomain> domains)
+        {
+            var site = NormalizeSiteDomain(host);
+            return domains
+                .Where(d => site == d.Domain || site.EndsWith("." + d.Domain))
+                .OrderByDescending(d => d.Domain.Length)
+                .FirstOrDefault();
+        }
+
         public static (string? LocalPart, string? Domain) SplitEmail(string? value)
         {
             var text = (value ?? "").Trim().ToLowerInvariant();
@@ -51,6 +101,7 @@ namespace Application.Services.CaptureService
         {
             var key = Normalize(DomainKey(domain));
             var hint = Normalize(platformHint);
+            var suffixes = SharedSuffixKeys(domain);
             Platform? best = null;
             var bestScore = 0;
 
@@ -62,8 +113,11 @@ namespace Application.Services.CaptureService
                     continue;
                 }
 
+                // A platform named after the shared suffix ("gov.br" for sso.acesso.gov.br) ranks
+                // below one named after the site itself.
                 var score = name == key || name == hint ? 3
                     : name.Length >= 4 && key.Length >= 4 && (key.Contains(name) || name.Contains(key)) ? 2
+                    : suffixes.Contains(name) ? 1
                     : 0;
 
                 if (score > bestScore)

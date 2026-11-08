@@ -157,6 +157,9 @@ namespace Infrastructure.Migrations
                     b.Property<int>("Digits")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("EmailAddressId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("EmailId")
                         .HasColumnType("integer");
 
@@ -179,6 +182,8 @@ namespace Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EmailAddressId");
 
                     b.HasIndex("EmailId");
 
@@ -404,6 +409,45 @@ namespace Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Platform");
+                });
+
+            modelBuilder.Entity("Domain.Entitites.PlatformDomain", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreateDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("Deleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Domain")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)");
+
+                    b.Property<int>("PlatformId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdateDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformId");
+
+                    b.HasIndex("UserId", "Domain")
+                        .IsUnique();
+
+                    b.ToTable("PlatformDomain");
                 });
 
             modelBuilder.Entity("Domain.Entitites.Provider", b =>
@@ -762,6 +806,11 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entitites.Authenticator", b =>
                 {
+                    b.HasOne("Domain.Entitites.EmailAddress", "EmailAddress")
+                        .WithMany()
+                        .HasForeignKey("EmailAddressId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Domain.Entitites.Email", "Email")
                         .WithMany()
                         .HasForeignKey("EmailId")
@@ -774,6 +823,8 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Email");
+
+                    b.Navigation("EmailAddress");
 
                     b.Navigation("User");
                 });
@@ -882,6 +933,25 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Image");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.Entitites.PlatformDomain", b =>
+                {
+                    b.HasOne("Domain.Entitites.Platform", "Platform")
+                        .WithMany()
+                        .HasForeignKey("PlatformId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entitites.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Platform");
 
                     b.Navigation("User");
                 });

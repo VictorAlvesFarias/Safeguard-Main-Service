@@ -3,6 +3,8 @@ using App.Extensions;
 using Application.Services;
 using Application.Services.AppFileService;
 using Application.Services.AuthenticatorService;
+using Application.Services.AutofillService;
+using Application.Services.PlatformDomainService;
 using Application.Services.CaptureService;
 using Application.Services.EmailService;
 using Application.Services.Identity;
@@ -35,6 +37,8 @@ namespace ASP.NET_Core_Template.Ioc
             services.AddMemoryCache();
             services.AddScoped<ICaptureService, CaptureService>();
             services.AddScoped<IAuthenticatorService, AuthenticatorService>();
+            services.AddScoped<IAutofillService, AutofillService>();
+            services.AddScoped<IPlatformDomainService, PlatformDomainService>();
             services.AddScoped<DbContextFactory>();
 
             services.AddDefaultIdentity<ApplicationUser>()

@@ -13,15 +13,18 @@ namespace Application.Services.AuthenticatorService
 
         private readonly IBaseRepository<Authenticator> _authenticatorRepository;
         private readonly IBaseRepository<Email> _emailRepository;
+        private readonly IBaseRepository<EmailAddress> _emailAddressRepository;
 
         public AuthenticatorService
         (
             IBaseRepository<Authenticator> authenticatorRepository,
-            IBaseRepository<Email> emailRepository
+            IBaseRepository<Email> emailRepository,
+            IBaseRepository<EmailAddress> emailAddressRepository
         )
         {
             _authenticatorRepository = authenticatorRepository;
             _emailRepository = emailRepository;
+            _emailAddressRepository = emailAddressRepository;
         }
 
         public BaseResponse<Authenticator> RegisterAuthenticator(AuthenticatorRequest authenticatorRequest)
@@ -44,7 +47,8 @@ namespace Application.Services.AuthenticatorService
                 authenticatorRequest.Algorithm,
                 authenticatorRequest.Digits,
                 authenticatorRequest.Period,
-                authenticatorRequest.EmailId
+                authenticatorRequest.EmailId,
+                authenticatorRequest.EmailAddressId
             );
 
             response.Data = _authenticatorRepository.AddAsync(authenticator).Result;
@@ -79,7 +83,8 @@ namespace Application.Services.AuthenticatorService
                 authenticatorRequest.Algorithm,
                 authenticatorRequest.Digits,
                 authenticatorRequest.Period,
-                authenticatorRequest.EmailId
+                authenticatorRequest.EmailId,
+                authenticatorRequest.EmailAddressId
             );
 
             response.Success = _authenticatorRepository.Update(authenticator);
@@ -115,6 +120,8 @@ namespace Application.Services.AuthenticatorService
                 .Include(e => e.Email)
                 .ThenInclude(e => e!.EmailAddress)
                 .ThenInclude(e => e.Provider)
+                .Include(e => e.EmailAddress)
+                .ThenInclude(e => e!.Provider)
                 .OrderBy(e => e.Issuer)
                 .ThenBy(e => e.AccountName)
                 .ToList();
@@ -184,6 +191,10 @@ namespace Application.Services.AuthenticatorService
             if (request.EmailId is not null && !_emailRepository.Get().Any(e => e.Id == request.EmailId))
             {
                 return "Conta vinculada não encontrada";
+            }
+            if (request.EmailAddressId is not null && !_emailAddressRepository.Get().Any(e => e.Id == request.EmailAddressId))
+            {
+                return "Endereço de e-mail vinculado não encontrado";
             }
 
             return null;

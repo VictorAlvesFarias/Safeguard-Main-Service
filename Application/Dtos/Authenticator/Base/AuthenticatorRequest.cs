@@ -9,5 +9,6 @@
         public int Digits { get; set; } = 6;
         public int Period { get; set; } = 30;
         public int? EmailId { get; set; }
+        public int? EmailAddressId { get; set; }
     }
 }

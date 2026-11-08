@@ -45,6 +45,65 @@ namespace Test
             Assert.Null(CaptureIdentity.MatchPlatform(domain, null, Platforms));
         }
 
+        [Theory]
+        [InlineData("Gov.br")]
+        [InlineData("GOV.BR")]
+        [InlineData("gov br")]
+        [InlineData("Gov")]
+        public void MatchPlatform_recognizes_the_govbr_login(string platformName)
+        {
+            var platforms = new List<Platform>(Platforms) { P(7, platformName) };
+            Assert.Equal(7, CaptureIdentity.MatchPlatform("sso.acesso.gov.br", "gov.br", platforms)?.Id);
+            Assert.Equal(7, CaptureIdentity.MatchPlatform("sso.acesso.gov.br", null, platforms)?.Id);
+        }
+
+        [Fact]
+        public void A_platform_named_after_the_site_beats_govbr()
+        {
+            var platforms = new List<Platform>(Platforms) { P(7, "gov.br"), P(8, "Receita") };
+            Assert.Equal(8, CaptureIdentity.MatchPlatform("cav.receita.fazenda.gov.br", "Receita", platforms)?.Id);
+            Assert.Null(CaptureIdentity.MatchPlatform("sso.acesso.gov.br", null, Platforms));
+            Assert.Null(CaptureIdentity.MatchPlatform("www.exemplo.com.br", null, platforms));
+        }
+
+        [Theory]
+        [InlineData("https://www.Acesso.gov.br/login?x=1", "acesso.gov.br")]
+        [InlineData("sso.acesso.gov.br", "sso.acesso.gov.br")]
+        [InlineData("  steampowered.com/  ", "steampowered.com")]
+        [InlineData("http://localhost:8100", "localhost")]
+        public void NormalizeSiteDomain_keeps_the_host(string input, string expected)
+        {
+            Assert.Equal(expected, CaptureIdentity.NormalizeSiteDomain(input));
+        }
+
+        [Theory]
+        [InlineData("sso.acesso.gov.br", "acesso.gov.br")]
+        [InlineData("accounts.google.com", "google.com")]
+        [InlineData("www.itau.com.br", "itau.com.br")]
+        [InlineData("store.steampowered.com", "steampowered.com")]
+        [InlineData("facebook.com", "facebook.com")]
+        [InlineData("127.0.0.1", "127.0.0.1")]
+        public void RegistrableDomain_covers_the_site(string host, string expected)
+        {
+            Assert.Equal(expected, CaptureIdentity.RegistrableDomain(host));
+        }
+
+        [Fact]
+        public void MatchDomain_covers_subdomains_and_prefers_the_most_specific()
+        {
+            var domains = new List<PlatformDomain>
+            {
+                new() { PlatformId = 1, Domain = "gov.br" },
+                new() { PlatformId = 2, Domain = "acesso.gov.br" },
+                new() { PlatformId = 3, Domain = "steampowered.com" },
+            };
+            Assert.Equal(2, CaptureIdentity.MatchDomain("sso.acesso.gov.br", domains)?.PlatformId);
+            Assert.Equal(1, CaptureIdentity.MatchDomain("www.receita.gov.br", domains)?.PlatformId);
+            Assert.Equal(3, CaptureIdentity.MatchDomain("store.steampowered.com", domains)?.PlatformId);
+            Assert.Null(CaptureIdentity.MatchDomain("notsteampowered.com", domains));
+            Assert.Null(CaptureIdentity.MatchDomain("steampowered.com.evil.io", domains));
+        }
+
         [Fact]
         public void Provider_comes_from_the_email_domain()
         {

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
+using Application.Services.PlatformDomainService;
 
 namespace Application.Services.CaptureService
 {
@@ -16,6 +17,7 @@ namespace Application.Services.CaptureService
         private const int MaxUrlLength = 2048;
 
         private readonly IMemoryCache _cache;
+        private readonly IPlatformDomainService _platformDomainService;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IBaseRepository<CapturedCredential> _capturedCredentialRepository;
         private readonly IBaseRepository<Email> _emailRepository;
@@ -37,9 +39,11 @@ namespace Application.Services.CaptureService
             IBaseRepository<Email> emailRepository,
             IBaseRepository<Platform> platformRepository,
             IBaseRepository<Provider> providerRepository,
-            IBaseRepository<EmailAddress> emailAddressRepository
+            IBaseRepository<EmailAddress> emailAddressRepository,
+            IPlatformDomainService platformDomainService
         )
         {
+            _platformDomainService = platformDomainService;
             _cache = cache;
             _httpContextAccessor = httpContextAccessor;
             _capturedCredentialRepository = capturedCredentialRepository;
@@ -184,6 +188,12 @@ namespace Application.Services.CaptureService
             );
             response.Success = true;
 
+            // The site now belongs to the account's platform (a domain already on another one stays there).
+            if (email?.PlatformId is int platformId)
+            {
+                _platformDomainService.Link(session.Data.Domain, platformId, move: false);
+            }
+
             _cache.Remove(CacheKey(session.Data.Id));
 
             return response;
@@ -264,7 +274,7 @@ namespace Application.Services.CaptureService
             var addresses = _emailAddressRepository.Get().Include(e => e.Provider).ToList();
             var accounts = _emailRepository.Get().Include(e => e.Platform).ToList();
 
-            var platform = ResolvePlatform(domain, platformHint, platforms);
+            var platform = _platformDomainService.ResolvePlatform(domain, platformHint);
             var provider = CaptureIdentity.MatchProvider(emailDomain, providers);
             var address = CaptureIdentity.MatchAddress(localPart, provider, addresses);
             var sameIdentity = identity.Length == 0
@@ -311,17 +321,6 @@ namespace Application.Services.CaptureService
                         })
                         .ToList(),
             };
-        }
-
-        private Platform? ResolvePlatform(string domain, string? platformHint, List<Platform> platforms)
-        {
-            var learnedPlatformId = _capturedCredentialRepository.Get()
-                .Where(e => e.Domain == domain && e.EmailId != null)
-                .Select(e => e.Email!.PlatformId)
-                .FirstOrDefault(id => id != null);
-
-            return platforms.FirstOrDefault(p => p.Id == learnedPlatformId)
-                ?? CaptureIdentity.MatchPlatform(domain, platformHint, platforms);
         }
 
         private CapturedCredential Upsert(string domain, string username, CapturedCredentialStatus status, int? emailId)

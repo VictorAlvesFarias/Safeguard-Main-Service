@@ -23,6 +23,7 @@ namespace Infrastructure.Context
         protected DbSet<CapturedCredential> CapturedCredential { get; set; }
         protected DbSet<Authenticator> Authenticator { get; set; }
         protected DbSet<RefreshToken> RefreshToken { get; set; }
+        protected DbSet<PlatformDomain> PlatformDomain { get; set; }
 
         // DateTime columns become "timestamp without time zone" and accept DateTime.Now, as they did
         // in SQLite. Set here so the app and the dotnet ef tools build the same model.
@@ -43,6 +44,22 @@ namespace Infrastructure.Context
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<PlatformDomain>(entity =>
+            {
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(e => e.Platform)
+                    .WithMany()
+                    .HasForeignKey(e => e.PlatformId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(e => e.Domain).IsRequired().HasMaxLength(253);
+                entity.HasIndex(e => new { e.UserId, e.Domain }).IsUnique();
+            });
 
             modelBuilder.Entity<RefreshToken>(entity =>
             {
@@ -153,6 +170,12 @@ namespace Infrastructure.Context
                 entity.HasOne(e => e.Email)
                     .WithMany()
                     .HasForeignKey(e => e.EmailId)
+                    .OnDelete(DeleteBehavior.SetNull)
+                    .IsRequired(false);
+
+                entity.HasOne(e => e.EmailAddress)
+                    .WithMany()
+                    .HasForeignKey(e => e.EmailAddressId)
                     .OnDelete(DeleteBehavior.SetNull)
                     .IsRequired(false);
 
