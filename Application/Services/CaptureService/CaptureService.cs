@@ -282,6 +282,14 @@ namespace Application.Services.CaptureService
                 : CaptureIdentity.SameIdentity(identity, localPart, address, accounts);
             var account = platform is null ? null : sameIdentity.FirstOrDefault(e => e.PlatformId == platform.Id);
 
+            // A login without "@" (user name, student id...) says nothing about an e-mail, but the
+            // account found for it may already have one linked: show that address and its domain.
+            if (address is null && account?.EmailAddressId is not null)
+            {
+                address = addresses.FirstOrDefault(a => a.Id == account.EmailAddressId);
+                provider ??= address?.Provider;
+            }
+
             static MatchedAccount ToMatched(Email e) => new()
             {
                 Id = e.Id,
